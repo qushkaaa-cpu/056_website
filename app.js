@@ -187,23 +187,30 @@ async function issueCard() {
 
 async function addCardFromForm(event) {
   event.preventDefault();
-  const displayName = document.querySelector("#new-card-name").value.trim();
-  const holderName = document.querySelector("#new-card-holder").value.trim().toUpperCase();
   const cardNumber = document.querySelector("#new-card-number").value.trim();
   const network = document.querySelector("#new-card-network").value;
   const expiry = document.querySelector("#new-card-expiry").value.trim();
   const cvc = document.querySelector("#new-card-cvc").value.trim();
-  const dailyLimit = document.querySelector("#new-card-limit").value.trim();
   const normalizedNumber = cardNumber.replace(/\D/g, "");
   const parsedExpiry = parseExpiry(expiry);
   const detectedNetwork = detectCardNetwork(normalizedNumber);
 
-  if (!displayName || !holderName || !isValidCardNumber(normalizedNumber) || !parsedExpiry || !isValidCvc(cvc, detectedNetwork) || Number(dailyLimit) <= 0) {
-    toast("Enter a valid card number, expiry, CVC and limit.");
+  if (!isValidCardNumber(normalizedNumber) || !parsedExpiry || !isValidCvc(cvc, detectedNetwork)) {
+    toast("Enter a valid card number, expiry and CVC.");
     return;
   }
 
-  await createCard({ displayName, holderName, network: detectedNetwork || network, dailyLimit, normalizedNumber, expiry: parsedExpiry });
+  const finalNetwork = detectedNetwork || network;
+  const last4 = normalizedNumber.slice(-4);
+  const displayName = `${networkLabel(finalNetwork)} • ${last4}`;
+  await createCard({
+    displayName,
+    holderName: "LINKED CARD",
+    network: finalNetwork,
+    dailyLimit: "1000",
+    normalizedNumber,
+    expiry: parsedExpiry
+  });
   event.target.reset();
 }
 
@@ -505,7 +512,7 @@ function focusCardForm() {
   showView("card");
   const form = document.querySelector("#add-card-desk");
   form.scrollIntoView({ behavior: "smooth", block: "center" });
-  setTimeout(() => document.querySelector("#new-card-name").focus(), 320);
+  setTimeout(() => document.querySelector("#new-card-number").focus(), 320);
 }
 
 function bindCardInputFormatting() {
@@ -579,6 +586,14 @@ function isValidCardNumber(digits) {
 function isValidCvc(value, network) {
   const digits = value.replace(/\D/g, "");
   return network === "amex" ? /^\d{4}$/.test(digits) : /^\d{3}$/.test(digits);
+}
+
+function networkLabel(network) {
+  return {
+    visa: "Visa",
+    mastercard: "Mastercard",
+    amex: "Amex"
+  }[network] || "Card";
 }
 
 function parseExpiry(value) {
