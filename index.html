@@ -45,8 +45,8 @@
         <button class="profile-card" id="sidebar-profile" type="button">
           <span class="profile-avatar" id="sidebar-profile-initial">AM</span>
           <span>
-            <strong id="sidebar-profile-name">Alex Morgan</strong>
-            <small id="sidebar-profile-provider">Demo session</small>
+            <strong id="sidebar-profile-name">Guest</strong>
+            <small id="sidebar-profile-provider">Not signed in</small>
           </span>
         </button>
 
@@ -297,12 +297,12 @@
       <div class="modal-card">
         <button class="close-button" data-close-modal type="button" aria-label="Close">x</button>
         <p class="eyebrow">Account access</p>
-        <h2 id="profile-title">Alex Morgan</h2>
+        <h2 id="profile-title">Choose sign-in method</h2>
         <div class="account-state">
           <span class="profile-avatar large" id="modal-profile-initial">AM</span>
           <div>
-            <strong id="modal-profile-name">Alex Morgan</strong>
-            <small id="modal-profile-copy">Signed in with demo session</small>
+            <strong id="modal-profile-name">Guest</strong>
+            <small id="modal-profile-copy">Not signed in</small>
           </div>
         </div>
         <div class="service-grid" id="service-grid">
@@ -344,6 +344,13 @@
         signOut,
         isSignInWithEmailLink
       } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+      import {
+        doc,
+        getDoc,
+        getFirestore,
+        serverTimestamp,
+        setDoc
+      } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
       const firebaseConfig = {
         apiKey: "AIzaSyDE1fjaQy5JYnSSdaZRUVCmIjtK1yoocgM",
@@ -357,6 +364,7 @@
 
       const app = initializeApp(firebaseConfig);
       const auth = getAuth(app);
+      const db = getFirestore(app);
       const providers = {
         Google: new GoogleAuthProvider(),
         GitHub: new GithubAuthProvider()
@@ -371,6 +379,7 @@
       function cleanUser(user) {
         if (!user) return null;
         return {
+          uid: user.uid,
           name: user.displayName || user.email || "Client",
           email: user.email || "",
           provider: user.providerData[0]?.providerId?.includes("github") ? "GitHub" : user.providerData[0]?.providerId?.includes("google") ? "Google" : "Email"
@@ -391,6 +400,40 @@
         },
         signOut() {
           return signOut(auth);
+        }
+      };
+
+      window.luxDebitData = {
+        ready: true,
+        async loadDashboard(user) {
+          const ref = doc(db, "customers", user.uid);
+          const snapshot = await getDoc(ref);
+          if (snapshot.exists() && snapshot.data().dashboard) {
+            return snapshot.data().dashboard;
+          }
+
+          const dashboard = window.luxDebitCreateInitialDashboard
+            ? window.luxDebitCreateInitialDashboard(user)
+            : { wallets: [], cards: [], transactions: [] };
+          await setDoc(ref, {
+            uid: user.uid,
+            email: user.email || "",
+            name: user.name || "Client",
+            dashboard,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
+          return dashboard;
+        },
+        async saveDashboard(userId, account, dashboard) {
+          if (!userId) return;
+          await setDoc(doc(db, "customers", userId), {
+            uid: userId,
+            email: account.email || "",
+            name: account.name || "Client",
+            dashboard,
+            updatedAt: serverTimestamp()
+          }, { merge: true });
         }
       };
 

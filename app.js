@@ -1,7 +1,7 @@
 const API_BASE = "http://localhost:8080/api/v1";
 const CUSTOMER_ID = "5f7b9b42-1bb4-4f6f-80de-b671f1c28a32";
 
-const fallback = {
+const demoTemplate = {
   wallets: [
     { id: "eur", currency: "EUR", balance: "18420.75", change_24h: "1.24", deposit_address: "iban-demo-eu-0842" },
     { id: "usdc", currency: "USDC", balance: "6250.40", change_24h: "0.18", deposit_address: "0xD0f7A1a0E8B92899C4C3f1d1a0a71bF277bC0842" },
@@ -33,6 +33,32 @@ const fallback = {
   ]
 };
 
+const signedOutDashboard = {
+  wallets: [
+    { id: "eur", currency: "EUR", balance: "0.00", change_24h: "0.00", deposit_address: "" },
+    { id: "usdc", currency: "USDC", balance: "0.00", change_24h: "0.00", deposit_address: "" },
+    { id: "usdt", currency: "USDT", balance: "0.00", change_24h: "0.00", deposit_address: "" }
+  ],
+  cards: [],
+  transactions: []
+};
+
+const signedOutCard = {
+  id: "signed-out",
+  display_name: "Sign in required",
+  holder_name: "PRIVATE ACCOUNT",
+  network: "visa",
+  last4: "0000",
+  masked_pan: "•••• •••• •••• ••••",
+  expiry_month: 0,
+  expiry_year: 0,
+  status: "locked",
+  apple_pay_ready: false,
+  virtual: true,
+  design_theme: "private",
+  limits: { daily: "0", monthly: "0", atm: "0", online: false, contactless: false }
+};
+
 const marketConfig = {
   exchanges: ["Binance", "Coinbase", "Kraken", "OKX", "Bitstamp"],
   bases: ["BTC", "ETH", "SOL", "EUR", "USD", "GBP", "CHF", "USDC", "USDT"],
@@ -58,10 +84,12 @@ const marketConfig = {
 };
 
 const state = {
-  dashboard: fallback,
+  dashboard: cloneDashboard(signedOutDashboard),
   selectedCurrency: "USDC",
   activeView: "home",
   toastTimer: null,
+  userId: null,
+  dashboardLoading: false,
   account: loadAccount(),
   markets: {
     watchlist: loadMarketWatchlist(),
@@ -80,7 +108,6 @@ document.addEventListener("DOMContentLoaded", () => {
   bindActions();
   initMarkets();
   render();
-  loadDashboard();
   startMarketTicker();
 });
 
@@ -139,11 +166,7 @@ async function loadDashboard() {
   const refresh = document.querySelector("#refresh-button");
   refresh.classList.add("is-loading");
   try {
-    state.dashboard = await api("/dashboard");
-    document.querySelector("#connection-state").textContent = "API connected";
-  } catch {
-    state.dashboard = fallback;
-    document.querySelector("#connection-state").textContent = "Local data";
+    await loadPersonalDashboard();
   } finally {
     refresh.classList.remove("is-loading");
     render();
@@ -175,51 +198,55 @@ async function addCardFromForm(event) {
 }
 
 async function createCard({ displayName, holderName, network, dailyLimit }) {
-  try {
-    const card = await api("/cards", {
-      method: "POST",
-      body: JSON.stringify({ display_name: displayName, holder_name: holderName })
-    });
-    card.display_name = displayName;
-    card.holder_name = holderName;
-    card.network = network;
-    card.limits = { ...card.limits, daily: dailyLimit };
-    state.dashboard.cards.unshift(card);
-  } catch {
-    const card = {
-      ...fallback.cards[0],
-      id: createID(),
-      display_name: displayName,
-      holder_name: holderName,
-      network,
-      limits: { ...fallback.cards[0].limits, daily: dailyLimit },
-      last4: String(Math.floor(Math.random() * 10000)).padStart(4, "0")
-    };
-    card.masked_pan = `4242 42** **** ${card.last4}`;
-    state.dashboard.cards.unshift(card);
-  }
+  if (!requireAccount()) return;
+  const last4 = String(Math.floor(Math.random() * 10000)).padStart(4, "0");
+  const card = {
+    ...demoTemplate.cards[0],
+    id: createID(),
+    display_name: displayName,
+    holder_name: holderName,
+    network,
+    limits: { ...demoTemplate.cards[0].limits, daily: dailyLimit },
+    last4,
+    masked_pan: `4242 42** **** ${last4}`,
+    status: "active",
+    apple_pay_ready: false,
+    design_theme: "obsidian-teal"
+  };
+  state.dashboard.cards.unshift(card);
+  addTransaction({
+    merchant: `${displayName} issued`,
+    category: "Card",
+    amount: "0.00",
+    currency: "EUR",
+    status: "created"
+  });
+  await savePersonalDashboard();
   showView("card");
   render();
   toast(`${displayName} card added.`);
 }
 
 async function toggleLock() {
+  if (!requireAccount()) return;
   const card = primaryCard();
   const shouldLock = card.status === "active";
-  try {
-    const updated = await api(`/cards/${card.id}/lock`, {
-      method: "PATCH",
-      body: JSON.stringify({ locked: shouldLock })
-    });
-    replaceCard(updated);
-  } catch {
-    card.status = shouldLock ? "locked" : "active";
-  }
+  card.status = shouldLock ? "locked" : "active";
+  replaceCard(card);
+  addTransaction({
+    merchant: `${card.display_name} ${shouldLock ? "locked" : "unlocked"}`,
+    category: "Security",
+    amount: "0.00",
+    currency: "EUR",
+    status: shouldLock ? "locked" : "active"
+  });
+  await savePersonalDashboard();
   render();
   toast(card.status === "active" ? "Card unlocked." : "Card locked.");
 }
 
 async function generateDeposit() {
+  if (!requireAccount()) return;
   const amount = document.querySelector("#deposit-amount").value || "0";
   const error = document.querySelector("#deposit-error");
   if (Number(amount) <= 0) {
@@ -227,24 +254,26 @@ async function generateDeposit() {
     return;
   }
   error.hidden = true;
-  let quote;
-  try {
-    quote = await api("/deposit", {
-      method: "POST",
-      body: JSON.stringify({ currency: state.selectedCurrency, amount })
-    });
-  } catch {
-    const wallet = state.dashboard.wallets.find((item) => item.currency === state.selectedCurrency);
-    quote = {
-      network: "Ethereum",
-      address: wallet.deposit_address,
-      qr_payload: `${state.selectedCurrency}:${wallet.deposit_address}?amount=${amount}&network=ethereum`
-    };
-  }
+  const wallet = state.dashboard.wallets.find((item) => item.currency === state.selectedCurrency);
+  const quote = {
+    network: "Ethereum",
+    address: wallet.deposit_address,
+    qr_payload: `${state.selectedCurrency}:${wallet.deposit_address}?amount=${amount}&network=ethereum`
+  };
+  wallet.balance = (Number(wallet.balance) + Number(amount)).toFixed(2);
+  addTransaction({
+    merchant: `${state.selectedCurrency} Deposit`,
+    category: "Deposit",
+    amount: Number(amount).toFixed(2),
+    currency: state.selectedCurrency,
+    status: "confirmed"
+  });
+  await savePersonalDashboard();
 
   document.querySelector("#qr-card").hidden = false;
   document.querySelector("#deposit-network").textContent = quote.network;
   document.querySelector("#deposit-address").textContent = quote.address;
+  render();
   toast(`${state.selectedCurrency} deposit address generated.`);
 }
 
@@ -324,6 +353,15 @@ function renderLimits(card) {
 
 function renderCardStack() {
   document.querySelector("#card-count").textContent = `${state.dashboard.cards.length} ${state.dashboard.cards.length === 1 ? "card" : "cards"}`;
+  if (state.dashboard.cards.length === 0) {
+    document.querySelector("#card-stack").innerHTML = `
+      <article class="empty-state">
+        <strong>No personal cards yet</strong>
+        <small>Sign in and issue a virtual card to create your private card data.</small>
+      </article>
+    `;
+    return;
+  }
   document.querySelector("#card-stack").innerHTML = state.dashboard.cards.map((card, index) => `
     <button class="stack-card ${index === 0 ? "is-primary" : ""}" type="button" data-card-id="${card.id}">
       <span>
@@ -339,6 +377,7 @@ function renderCardStack() {
       const card = state.dashboard.cards.find((item) => item.id === button.dataset.cardId);
       if (!card) return;
       state.dashboard.cards = [card, ...state.dashboard.cards.filter((item) => item.id !== card.id)];
+      savePersonalDashboard();
       render();
       toast(`${card.display_name} selected.`);
     });
@@ -347,8 +386,9 @@ function renderCardStack() {
 
 function renderTransactions() {
   const latest = state.dashboard.transactions.slice(0, 4);
-  document.querySelector("#latest-transactions").innerHTML = latest.map(transactionMarkup).join("");
-  document.querySelector("#transactions").innerHTML = state.dashboard.transactions.map(transactionMarkup).join("");
+  const empty = `<article class="empty-state"><strong>No personal transactions yet</strong><small>Your private account history will appear here after deposits and card actions.</small></article>`;
+  document.querySelector("#latest-transactions").innerHTML = latest.length ? latest.map(transactionMarkup).join("") : empty;
+  document.querySelector("#transactions").innerHTML = state.dashboard.transactions.length ? state.dashboard.transactions.map(transactionMarkup).join("") : empty;
   document.querySelector("#tx-count").textContent = `${state.dashboard.transactions.length} records`;
 }
 
@@ -403,7 +443,7 @@ function openProfileModal() {
 }
 
 function primaryCard() {
-  return state.dashboard.cards[0] || fallback.cards[0];
+  return state.dashboard.cards[0] || signedOutCard;
 }
 
 function replaceCard(card) {
@@ -411,7 +451,7 @@ function replaceCard(card) {
 }
 
 function wallet(currency) {
-  return state.dashboard.wallets.find((item) => item.currency === currency) || fallback.wallets[0];
+  return state.dashboard.wallets.find((item) => item.currency === currency) || signedOutDashboard.wallets[0];
 }
 
 function renderChange(selector, value) {
@@ -724,7 +764,10 @@ function renderAccount() {
 function loadAccount() {
   try {
     const saved = localStorage.getItem("luxdebit-account");
-    if (saved) return JSON.parse(saved);
+    if (saved) {
+      const account = JSON.parse(saved);
+      if (!account.signedIn) return account;
+    }
   } catch {}
   return {
     signedIn: false,
@@ -763,30 +806,207 @@ function bindFirebaseAuth() {
   });
 }
 
-function applyFirebaseUser(user) {
+async function applyFirebaseUser(user) {
   if (!user) {
     setSignedOut(false);
     return;
   }
+  state.userId = user.uid;
   state.account = {
     signedIn: true,
     provider: user.provider,
-    name: user.name
+    name: user.name,
+    email: user.email
   };
   saveAccount();
   renderAccount();
+  await loadPersonalDashboard();
+}
+
+async function loadPersonalDashboard() {
+  if (!state.userId || !window.luxDebitData?.ready) {
+    state.dashboard = cloneDashboard(signedOutDashboard);
+    document.querySelector("#connection-state").textContent = state.account.signedIn ? "Data service loading" : "Sign in required";
+    return;
+  }
+
+  state.dashboardLoading = true;
+  document.querySelector("#connection-state").textContent = "Loading private data";
+  try {
+    state.dashboard = await window.luxDebitData.loadDashboard({
+      uid: state.userId,
+      name: state.account.name,
+      email: state.account.email
+    });
+    document.querySelector("#connection-state").textContent = "Private Firebase data";
+  } catch (error) {
+    state.dashboard = loadLocalDashboardForUser();
+    document.querySelector("#connection-state").textContent = "Private local fallback";
+    toast(authErrorMessage(error));
+  } finally {
+    state.dashboardLoading = false;
+    render();
+  }
+}
+
+async function savePersonalDashboard() {
+  if (!state.userId) return;
+  saveLocalDashboardForUser();
+  if (!window.luxDebitData?.ready) return;
+  try {
+    await window.luxDebitData.saveDashboard(state.userId, state.account, cleanDashboardForStorage(state.dashboard));
+    document.querySelector("#connection-state").textContent = "Private Firebase data";
+  } catch (error) {
+    document.querySelector("#connection-state").textContent = "Private local fallback";
+    toast(authErrorMessage(error));
+  }
 }
 
 function setSignedOut(showToast = false) {
+  state.userId = null;
+  state.dashboard = cloneDashboard(signedOutDashboard);
   state.account = {
     signedIn: false,
     provider: "Guest",
-    name: "Guest"
+    name: "Guest",
+    email: ""
   };
   saveAccount();
-  renderAccount();
+  render();
   if (showToast) toast("Signed out.");
 }
+
+function requireAccount() {
+  if (state.account.signedIn && state.userId) return true;
+  openProfileModal();
+  toast("Sign in to use personal account data.");
+  return false;
+}
+
+function addTransaction({ merchant, category, amount, currency, status }) {
+  state.dashboard.transactions.unshift({
+    id: createID(),
+    merchant,
+    category,
+    amount,
+    currency,
+    status,
+    occurred_at: new Date().toISOString()
+  });
+}
+
+function cloneDashboard(dashboard) {
+  return JSON.parse(JSON.stringify(dashboard));
+}
+
+function cleanDashboardForStorage(dashboard) {
+  return {
+    wallets: cloneDashboard(dashboard.wallets || []),
+    cards: cloneDashboard(dashboard.cards || []),
+    transactions: cloneDashboard(dashboard.transactions || [])
+  };
+}
+
+function localDashboardKey() {
+  return `luxdebit-dashboard-${state.userId}`;
+}
+
+function loadLocalDashboardForUser() {
+  try {
+    const saved = localStorage.getItem(localDashboardKey());
+    if (saved) return JSON.parse(saved);
+  } catch {}
+  return createInitialDashboard({
+    uid: state.userId,
+    name: state.account.name,
+    email: state.account.email
+  });
+}
+
+function saveLocalDashboardForUser() {
+  try {
+    localStorage.setItem(localDashboardKey(), JSON.stringify(cleanDashboardForStorage(state.dashboard)));
+  } catch {}
+}
+
+function createInitialDashboard(user) {
+  const seed = hashString(`${user.uid}${user.email || ""}`);
+  const holder = (user.name || user.email || "Private Client").replace(/@.*/, "").replace(/[._-]+/g, " ").toUpperCase();
+  const last4 = String(1000 + seed % 9000);
+  const eur = (2400 + seed % 14000 + (seed % 91) / 100).toFixed(2);
+  const usdc = (250 + seed % 4800 + (seed % 37) / 100).toFixed(2);
+  const usdt = (120 + seed % 3600 + (seed % 53) / 100).toFixed(2);
+  const suffix = String(seed).slice(-6);
+
+  return {
+    wallets: [
+      { id: `eur-${suffix}`, currency: "EUR", balance: eur, change_24h: ((seed % 230) / 100 - 0.7).toFixed(2), deposit_address: `iban-private-eu-${suffix}` },
+      { id: `usdc-${suffix}`, currency: "USDC", balance: usdc, change_24h: ((seed % 160) / 100 - 0.4).toFixed(2), deposit_address: `0x${privateHex(seed, 40)}` },
+      { id: `usdt-${suffix}`, currency: "USDT", balance: usdt, change_24h: ((seed % 130) / 100 - 0.3).toFixed(2), deposit_address: `0x${privateHex(seed * 7, 40)}` }
+    ],
+    cards: [
+      {
+        ...demoTemplate.cards[0],
+        id: `card-${user.uid}`,
+        display_name: "Private Reserve",
+        holder_name: holder,
+        last4,
+        masked_pan: `4242 42** **** ${last4}`,
+        expiry_month: 12,
+        expiry_year: 2031,
+        status: "active",
+        limits: {
+          daily: String(2500 + seed % 7500),
+          monthly: String(18000 + seed % 52000),
+          atm: String(400 + seed % 1800),
+          online: true,
+          contactless: true
+        }
+      }
+    ],
+    transactions: [
+      {
+        id: `tx-welcome-${suffix}`,
+        merchant: "Private account opened",
+        category: "Account",
+        amount: "0.00",
+        currency: "EUR",
+        status: "created",
+        occurred_at: new Date(Date.now() - 36 * 3600 * 1000).toISOString()
+      },
+      {
+        id: `tx-deposit-${suffix}`,
+        merchant: "Initial EUR funding",
+        category: "Deposit",
+        amount: (Number(eur) * 0.18).toFixed(2),
+        currency: "EUR",
+        status: "confirmed",
+        occurred_at: new Date(Date.now() - 18 * 3600 * 1000).toISOString()
+      }
+    ]
+  };
+}
+
+function hashString(value) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function privateHex(seed, length) {
+  let value = "";
+  let current = seed >>> 0;
+  while (value.length < length) {
+    current = Math.imul(current ^ 0x9e3779b9, 1664525) + 1013904223;
+    value += (current >>> 0).toString(16).padStart(8, "0");
+  }
+  return value.slice(0, length);
+}
+
+window.luxDebitCreateInitialDashboard = createInitialDashboard;
 
 function setAuthButtonsLoading(isLoading) {
   document.querySelectorAll("[data-auth-provider], #email-auth-form button, #logout-button").forEach((button) => {
