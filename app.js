@@ -74,6 +74,7 @@ const money = new Intl.NumberFormat("en-IE", { style: "currency", currency: "EUR
 const number = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
 
 document.addEventListener("DOMContentLoaded", () => {
+  bindFirebaseAuth();
   bindNavigation();
   bindModals();
   bindActions();
@@ -125,6 +126,7 @@ function bindActions() {
   document.querySelectorAll("[data-auth-provider]").forEach((button) => {
     button.addEventListener("click", () => signIn(button.dataset.authProvider));
   });
+  document.querySelector("#email-auth-form").addEventListener("submit", sendEmailSignInLink);
   document.querySelector("#logout-button").addEventListener("click", signOut);
   document.querySelector("#add-market").addEventListener("click", addMarketFromControls);
   document.querySelector("#toggle-market-refresh").addEventListener("click", toggleMarketRefresh);
@@ -643,31 +645,64 @@ function saveMarketWatchlist() {
   } catch {}
 }
 
-function signIn(provider) {
-  const names = {
-    Apple: "Alex Morgan",
-    Google: "Alexander Morgan",
-    GitHub: "amorgan-finance",
-    Email: "Alex Morgan"
-  };
-  state.account = {
-    signedIn: true,
-    provider,
-    name: names[provider] || "Alex Morgan"
-  };
-  saveAccount();
-  renderAccount();
-  toast(`Signed in with ${provider}.`);
+async function signIn(provider) {
+  if (provider === "Email") {
+    const form = document.querySelector("#email-auth-form");
+    form.hidden = false;
+    requestAnimationFrame(() => form.classList.add("is-visible"));
+    document.querySelector("#auth-email").focus();
+    return;
+  }
+
+  if (!window.luxDebitAuth?.ready) {
+    toast("Firebase is still loading. Try again in a moment.");
+    return;
+  }
+
+  setAuthButtonsLoading(true);
+  try {
+    await window.luxDebitAuth.signInWithProvider(provider);
+    toast(`Signed in with ${provider}.`);
+  } catch (error) {
+    toast(authErrorMessage(error));
+  } finally {
+    setAuthButtonsLoading(false);
+  }
 }
 
-function signOut() {
-  state.account = {
-    signedIn: false,
-    provider: "Guest",
-    name: "Guest"
-  };
-  saveAccount();
-  renderAccount();
+async function sendEmailSignInLink(event) {
+  event.preventDefault();
+  const email = document.querySelector("#auth-email").value.trim();
+  if (!email) {
+    toast("Enter your email address.");
+    return;
+  }
+  if (!window.luxDebitAuth?.ready) {
+    toast("Firebase is still loading. Try again in a moment.");
+    return;
+  }
+
+  setAuthButtonsLoading(true);
+  try {
+    await window.luxDebitAuth.sendEmailLink(email);
+    toast("Sign-in link sent. Check your email.");
+  } catch (error) {
+    toast(authErrorMessage(error));
+  } finally {
+    setAuthButtonsLoading(false);
+  }
+}
+
+async function signOut() {
+  if (window.luxDebitAuth?.ready) {
+    try {
+      await window.luxDebitAuth.signOut();
+    } catch (error) {
+      toast(authErrorMessage(error));
+      return;
+    }
+  }
+  setSignedOut();
   toast("Signed out.");
 }
 
@@ -692,9 +727,9 @@ function loadAccount() {
     if (saved) return JSON.parse(saved);
   } catch {}
   return {
-    signedIn: true,
-    provider: "Demo",
-    name: "Alex Morgan"
+    signedIn: false,
+    provider: "Guest",
+    name: "Guest"
   };
 }
 
@@ -712,4 +747,59 @@ function initialsFor(name) {
     .map((part) => part[0])
     .join("")
     .toUpperCase() || "G";
+}
+
+function bindFirebaseAuth() {
+  if (window.luxDebitAuth?.ready) {
+    applyFirebaseUser(window.luxDebitAuth.currentUser);
+  }
+
+  window.addEventListener("luxdebit-auth-state", (event) => {
+    applyFirebaseUser(event.detail);
+  });
+
+  window.addEventListener("luxdebit-auth-error", (event) => {
+    toast(authErrorMessage(event.detail));
+  });
+}
+
+function applyFirebaseUser(user) {
+  if (!user) {
+    setSignedOut(false);
+    return;
+  }
+  state.account = {
+    signedIn: true,
+    provider: user.provider,
+    name: user.name
+  };
+  saveAccount();
+  renderAccount();
+}
+
+function setSignedOut(showToast = false) {
+  state.account = {
+    signedIn: false,
+    provider: "Guest",
+    name: "Guest"
+  };
+  saveAccount();
+  renderAccount();
+  if (showToast) toast("Signed out.");
+}
+
+function setAuthButtonsLoading(isLoading) {
+  document.querySelectorAll("[data-auth-provider], #email-auth-form button, #logout-button").forEach((button) => {
+    button.disabled = isLoading;
+    button.classList.toggle("is-loading", isLoading);
+  });
+}
+
+function authErrorMessage(error) {
+  const message = typeof error === "string" ? error : error?.message || "";
+  if (message.includes("auth/popup-closed-by-user")) return "Sign-in window was closed.";
+  if (message.includes("auth/unauthorized-domain")) return "Add this site domain in Firebase Authentication settings.";
+  if (message.includes("auth/operation-not-allowed")) return "Enable this sign-in provider in Firebase.";
+  if (message.includes("auth/account-exists-with-different-credential")) return "This email is already connected to another sign-in method.";
+  return "Could not complete sign-in. Check Firebase settings.";
 }

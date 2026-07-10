@@ -306,10 +306,6 @@
           </div>
         </div>
         <div class="service-grid" id="service-grid">
-          <button class="service-button" data-auth-provider="Apple" type="button">
-            <span>Apple</span>
-            <small>Private relay ready</small>
-          </button>
           <button class="service-button" data-auth-provider="Google" type="button">
             <span>Google</span>
             <small>Personal or workspace</small>
@@ -323,11 +319,103 @@
             <small>Secure magic link</small>
           </button>
         </div>
+        <form class="email-auth-form" id="email-auth-form" hidden>
+          <label for="auth-email">Email address</label>
+          <div>
+            <input id="auth-email" type="email" autocomplete="email" placeholder="you@example.com" required />
+            <button type="submit">Send link</button>
+          </div>
+        </form>
         <button class="logout-button" id="logout-button" type="button">Sign out</button>
       </div>
     </dialog>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script type="module">
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+      import {
+        getAuth,
+        GoogleAuthProvider,
+        GithubAuthProvider,
+        onAuthStateChanged,
+        sendSignInLinkToEmail,
+        signInWithEmailLink,
+        signInWithPopup,
+        signOut,
+        isSignInWithEmailLink
+      } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+
+      const firebaseConfig = {
+        apiKey: "AIzaSyDE1fjaQy5JYnSSdaZRUVCmIjtK1yoocgM",
+        authDomain: "entity-bb7a4.firebaseapp.com",
+        projectId: "entity-bb7a4",
+        storageBucket: "entity-bb7a4.firebasestorage.app",
+        messagingSenderId: "438530397045",
+        appId: "1:438530397045:web:88e5a0bfd2637bb8bcf93c",
+        measurementId: "G-NZJE96Z6YK"
+      };
+
+      const app = initializeApp(firebaseConfig);
+      const auth = getAuth(app);
+      const providers = {
+        Google: new GoogleAuthProvider(),
+        GitHub: new GithubAuthProvider()
+      };
+
+      const redirectUrl = `${window.location.origin}${window.location.pathname}`;
+      const emailLinkSettings = {
+        url: redirectUrl,
+        handleCodeInApp: true
+      };
+
+      function cleanUser(user) {
+        if (!user) return null;
+        return {
+          name: user.displayName || user.email || "Client",
+          email: user.email || "",
+          provider: user.providerData[0]?.providerId?.includes("github") ? "GitHub" : user.providerData[0]?.providerId?.includes("google") ? "Google" : "Email"
+        };
+      }
+
+      window.luxDebitAuth = {
+        ready: true,
+        currentUser: null,
+        signInWithProvider(providerName) {
+          const provider = providers[providerName];
+          if (!provider) throw new Error("Provider is not configured.");
+          return signInWithPopup(auth, provider);
+        },
+        async sendEmailLink(email) {
+          await sendSignInLinkToEmail(auth, email, emailLinkSettings);
+          window.localStorage.setItem("luxdebit-email-auth", email);
+        },
+        signOut() {
+          return signOut(auth);
+        }
+      };
+
+      onAuthStateChanged(auth, (user) => {
+        window.luxDebitAuth.currentUser = cleanUser(user);
+        window.dispatchEvent(new CustomEvent("luxdebit-auth-state", { detail: window.luxDebitAuth.currentUser }));
+      });
+
+      if (isSignInWithEmailLink(auth, window.location.href)) {
+        const storedEmail = window.localStorage.getItem("luxdebit-email-auth");
+        const email = storedEmail || window.prompt("Enter the email you used to sign in");
+        if (email) {
+          signInWithEmailLink(auth, email, window.location.href)
+            .then(() => {
+              window.localStorage.removeItem("luxdebit-email-auth");
+              window.history.replaceState({}, document.title, redirectUrl);
+            })
+            .catch((error) => {
+              window.dispatchEvent(new CustomEvent("luxdebit-auth-error", { detail: error.message }));
+            });
+        }
+      }
+
+      window.dispatchEvent(new CustomEvent("luxdebit-auth-ready"));
+    </script>
     <script src="./app.js"></script>
   </body>
 </html>
