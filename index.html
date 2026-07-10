@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LuxDebit Web</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#app">Skip to account</a>
+    <div class="nav-rail" aria-hidden="true">
+      <span>Menu</span>
+    </div>
+    <button class="profile-launcher" id="profile-launcher" type="button" aria-label="Open profile">
+      <span id="profile-initial">AM</span>
+    </button>
+    <div class="shell">
+      <aside class="sidebar" aria-label="Primary navigation">
+        <div class="brand">
+          <span class="brand-mark"></span>
+          <div>
+            <strong>LuxDebit</strong>
+            <small>Reserve desk</small>
+          </div>
+        </div>
+
+        <nav class="tabs" aria-label="Sections">
+          <button class="tab is-active" data-view="home" type="button">
+            <span>Home</span>
+          </button>
+          <button class="tab" data-view="card" type="button">
+            <span>Card</span>
+          </button>
+          <button class="tab" data-view="markets" type="button">
+            <span>Markets</span>
+          </button>
+          <button class="tab" data-view="transactions" type="button">
+            <span>Transactions</span>
+          </button>
+        </nav>
+
+        <button class="profile-card" id="sidebar-profile" type="button">
+          <span class="profile-avatar" id="sidebar-profile-initial">AM</span>
+          <span>
+            <strong id="sidebar-profile-name">Alex Morgan</strong>
+            <small id="sidebar-profile-provider">Demo session</small>
+          </span>
+        </button>
+
+        <div class="sidebar-note">
+          <span class="status-dot"></span>
+          <p>Live card controls, funding addresses and settlement history.</p>
+        </div>
+      </aside>
+
+      <main class="app" id="app" aria-live="polite">
+        <section class="topbar">
+          <div>
+            <p class="eyebrow">Reserve account / EUR treasury</p>
+            <h1 id="view-title">Home</h1>
+          </div>
+          <div class="top-actions">
+            <span class="connection-pill" id="connection-state">Local data</span>
+            <button class="icon-button" id="refresh-button" type="button" aria-label="Refresh data">
+              <span></span>
+            </button>
+          </div>
+        </section>
+
+        <section class="view is-active" id="home-view">
+          <div class="dashboard-grid">
+            <section class="balance-panel reveal">
+              <p class="muted">Available balance</p>
+              <div class="big-balance" id="eur-balance">EUR 0.00</div>
+              <span class="positive" id="eur-change">+0.00% 24h</span>
+              <div class="balance-meta">
+                <span>Primary currency</span>
+                <strong>EUR</strong>
+              </div>
+            </section>
+
+            <button class="card-preview reveal" id="home-card" type="button" aria-label="Open card details">
+              <div class="card-glow"></div>
+              <div class="card-row">
+                <span id="card-name">Black Reserve</span>
+                <span class="chip"></span>
+              </div>
+              <div class="card-number" id="card-number">4242 42** **** 0842</div>
+              <div class="card-row card-foot">
+                <span id="card-holder">ALEX MORGAN</span>
+                <span id="card-expiry">12/30</span>
+              </div>
+            </button>
+
+            <section class="actions reveal">
+              <button class="primary-action" data-open-deposit type="button">Deposit</button>
+              <button class="secondary-action" id="issue-from-home" type="button">Issue New Card</button>
+            </section>
+          </div>
+
+          <section class="wallet-strip" id="wallet-strip"></section>
+
+          <section class="panel">
+            <div class="section-head">
+              <h2>Latest activity</h2>
+              <button class="text-button" data-view-jump="transactions" type="button">View all</button>
+            </div>
+            <div class="transaction-list" id="latest-transactions"></div>
+          </section>
+        </section>
+
+        <section class="view" id="card-view">
+          <div class="card-layout">
+            <button class="card-preview card-large" id="card-detail-trigger" type="button">
+              <div class="card-glow"></div>
+              <div class="card-row">
+                <span id="detail-card-name">Black Reserve</span>
+                <span class="chip"></span>
+              </div>
+              <div class="card-number" id="detail-card-number">4242 42** **** 0842</div>
+              <div class="card-row card-foot">
+                <span id="detail-card-holder">ALEX MORGAN</span>
+                <span id="detail-card-expiry">12/30</span>
+              </div>
+            </button>
+
+            <section class="panel card-controls">
+              <div class="section-head">
+                <h2>Card management</h2>
+                <span class="badge" id="card-status">Active</span>
+              </div>
+              <div class="control-grid">
+                <button class="control" id="apple-pay" type="button">
+                  <span>Add to Apple Pay</span>
+                  <small>Ready for wallet provisioning</small>
+                </button>
+                <button class="control" id="lock-card" type="button">
+                  <span>Lock Card</span>
+                  <small>Instant status update</small>
+                </button>
+                <button class="control" id="issue-card" type="button">
+                  <span>Issue Virtual Card</span>
+                  <small>New tokenized card</small>
+                </button>
+                <button class="control" data-open-deposit type="button">
+                  <span>Deposit</span>
+                  <small>USDC or USDT funding</small>
+                </button>
+              </div>
+            </section>
+          </div>
+
+          <section class="add-card-desk" id="add-card-desk">
+            <div>
+              <p class="eyebrow">New card</p>
+              <h2>Add a virtual card</h2>
+              <p class="desk-copy">Create a named card for subscriptions, travel, or merchant-specific spend. It appears instantly in the card stack.</p>
+            </div>
+            <form class="card-form" id="card-form">
+              <label>
+                Card name
+                <input id="new-card-name" autocomplete="off" value="Travel Reserve" />
+              </label>
+              <label>
+                Holder
+                <input id="new-card-holder" autocomplete="off" value="ALEX MORGAN" />
+              </label>
+              <label>
+                Network
+                <select id="new-card-network">
+                  <option value="visa">Visa</option>
+                  <option value="mastercard">Mastercard</option>
+                </select>
+              </label>
+              <label>
+                Daily limit
+                <input id="new-card-limit" inputmode="decimal" value="3500" />
+              </label>
+              <button class="primary-action" type="submit">Add card</button>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="section-head">
+              <h2>Card stack</h2>
+              <span class="muted" id="card-count">1 card</span>
+            </div>
+            <div class="card-stack" id="card-stack"></div>
+          </section>
+
+          <section class="panel">
+            <div class="section-head">
+              <h2>Limits</h2>
+              <span class="muted">Live configuration</span>
+            </div>
+            <div class="limit-grid" id="limits"></div>
+          </section>
+        </section>
+
+        <section class="view" id="transactions-view">
+          <section class="panel">
+            <div class="section-head">
+              <h2>Payment history</h2>
+              <span class="muted" id="tx-count">0 records</span>
+            </div>
+            <div class="transaction-list full" id="transactions"></div>
+          </section>
+        </section>
+
+        <section class="view" id="markets-view">
+          <section class="market-hero">
+            <div>
+              <p class="eyebrow">Market monitor</p>
+              <h2>Track currency rates across exchanges</h2>
+              <p class="desk-copy">Choose a pair and exchange, add it to the watchlist, then compare spread, 24h move and last update.</p>
+            </div>
+            <div class="market-clock">
+              <span id="market-status">Auto refresh on</span>
+              <strong id="market-clock">--:--:--</strong>
+            </div>
+          </section>
+
+          <section class="market-desk">
+            <label>
+              Exchange
+              <select id="market-exchange"></select>
+            </label>
+            <label>
+              Base
+              <select id="market-base"></select>
+            </label>
+            <label>
+              Quote
+              <select id="market-quote"></select>
+            </label>
+            <button class="primary-action" id="add-market" type="button">Add to watchlist</button>
+            <button class="secondary-action" id="toggle-market-refresh" type="button">Pause updates</button>
+          </section>
+
+          <section class="panel">
+            <div class="section-head">
+              <h2>Watchlist</h2>
+              <span class="muted" id="market-count">0 pairs</span>
+            </div>
+            <div class="market-grid" id="market-watchlist"></div>
+          </section>
+
+          <section class="panel">
+            <div class="section-head">
+              <h2>Exchange comparison</h2>
+              <span class="muted" id="comparison-pair">BTC / EUR</span>
+            </div>
+            <div class="exchange-table" id="exchange-table"></div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <dialog class="modal" id="card-modal">
+      <div class="modal-card">
+        <button class="close-button" data-close-modal type="button" aria-label="Close">x</button>
+        <p class="eyebrow">Card dossier</p>
+        <h2>Black Reserve details</h2>
+        <div class="info-grid" id="card-info"></div>
+      </div>
+    </dialog>
+
+    <dialog class="modal" id="deposit-modal">
+      <div class="modal-card">
+        <button class="close-button" data-close-modal type="button" aria-label="Close">x</button>
+        <p class="eyebrow">Crypto deposit</p>
+        <h2>Fund account</h2>
+        <div class="deposit-form">
+          <div class="segmented" role="group" aria-label="Deposit currency">
+            <button class="is-active" data-currency="USDC" type="button">USDC</button>
+            <button data-currency="USDT" type="button">USDT</button>
+          </div>
+          <label>
+            Amount
+            <input id="deposit-amount" inputmode="decimal" value="250" />
+          </label>
+          <p class="form-error" id="deposit-error" hidden>Enter an amount greater than zero.</p>
+          <button class="primary-action" id="generate-deposit" type="button">Generate QR</button>
+        </div>
+        <div class="qr-card" id="qr-card" hidden>
+          <div class="qr">QR</div>
+          <small id="deposit-network">Ethereum</small>
+          <p id="deposit-address"></p>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog class="modal profile-modal" id="profile-modal">
+      <div class="modal-card">
+        <button class="close-button" data-close-modal type="button" aria-label="Close">x</button>
+        <p class="eyebrow">Account access</p>
+        <h2 id="profile-title">Alex Morgan</h2>
+        <div class="account-state">
+          <span class="profile-avatar large" id="modal-profile-initial">AM</span>
+          <div>
+            <strong id="modal-profile-name">Alex Morgan</strong>
+            <small id="modal-profile-copy">Signed in with demo session</small>
+          </div>
+        </div>
+        <div class="service-grid" id="service-grid">
+          <button class="service-button" data-auth-provider="Apple" type="button">
+            <span>Apple</span>
+            <small>Private relay ready</small>
+          </button>
+          <button class="service-button" data-auth-provider="Google" type="button">
+            <span>Google</span>
+            <small>Personal or workspace</small>
+          </button>
+          <button class="service-button" data-auth-provider="GitHub" type="button">
+            <span>GitHub</span>
+            <small>Developer account</small>
+          </button>
+          <button class="service-button" data-auth-provider="Email" type="button">
+            <span>Email</span>
+            <small>Secure magic link</small>
+          </button>
+        </div>
+        <button class="logout-button" id="logout-button" type="button">Sign out</button>
+      </div>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="./app.js"></script>
+  </body>
+</html>
