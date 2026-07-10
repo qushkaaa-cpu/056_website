@@ -49,7 +49,7 @@ const signedOutCard = {
   holder_name: "NO CARD LINKED",
   network: "visa",
   last4: "0000",
-  masked_pan: "Click to add your card",
+  masked_pan: "Add card",
   expiry_month: 0,
   expiry_year: 0,
   status: "locked",
