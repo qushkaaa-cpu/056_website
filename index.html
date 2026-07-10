@@ -271,19 +271,29 @@
     <dialog class="modal" id="deposit-modal">
       <div class="modal-card">
         <button class="close-button" data-close-modal type="button" aria-label="Close">x</button>
-        <p class="eyebrow">Crypto deposit</p>
+        <p class="eyebrow">Account funding</p>
         <h2>Fund account</h2>
         <div class="deposit-form">
           <div class="segmented" role="group" aria-label="Deposit currency">
+            <button data-currency="EUR" type="button">EUR</button>
             <button class="is-active" data-currency="USDC" type="button">USDC</button>
             <button data-currency="USDT" type="button">USDT</button>
           </div>
+          <label>
+            Service
+            <select id="deposit-service">
+              <option value="SEPA Bank Transfer">SEPA Bank Transfer</option>
+              <option value="Coinbase Pay">Coinbase Pay</option>
+              <option value="Binance Pay">Binance Pay</option>
+              <option value="External Wallet">External Wallet</option>
+            </select>
+          </label>
           <label>
             Amount
             <input id="deposit-amount" inputmode="decimal" value="250" />
           </label>
           <p class="form-error" id="deposit-error" hidden>Enter an amount greater than zero.</p>
-          <button class="primary-action" id="generate-deposit" type="button">Generate QR</button>
+          <button class="primary-action" id="generate-deposit" type="button">Confirm deposit</button>
         </div>
         <div class="qr-card" id="qr-card" hidden>
           <div class="qr">QR</div>
@@ -408,7 +418,7 @@
         async loadDashboard(user) {
           const ref = doc(db, "customers", user.uid);
           const snapshot = await getDoc(ref);
-          if (snapshot.exists() && snapshot.data().dashboard) {
+          if (snapshot.exists() && snapshot.data().dashboard && snapshot.data().dashboardVersion === 2) {
             return snapshot.data().dashboard;
           }
 
@@ -419,6 +429,7 @@
             uid: user.uid,
             email: user.email || "",
             name: user.name || "Client",
+            dashboardVersion: 2,
             dashboard,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp()
@@ -431,6 +442,7 @@
             uid: userId,
             email: account.email || "",
             name: account.name || "Client",
+            dashboardVersion: 2,
             dashboard,
             updatedAt: serverTimestamp()
           }, { merge: true });

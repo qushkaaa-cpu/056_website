@@ -248,21 +248,22 @@ async function toggleLock() {
 async function generateDeposit() {
   if (!requireAccount()) return;
   const amount = document.querySelector("#deposit-amount").value || "0";
+  const service = document.querySelector("#deposit-service").value;
   const error = document.querySelector("#deposit-error");
   if (Number(amount) <= 0) {
     error.hidden = false;
     return;
   }
   error.hidden = true;
-  const wallet = state.dashboard.wallets.find((item) => item.currency === state.selectedCurrency);
+  const wallet = ensureWallet(state.selectedCurrency);
   const quote = {
-    network: "Ethereum",
+    network: depositNetwork(service, state.selectedCurrency),
     address: wallet.deposit_address,
-    qr_payload: `${state.selectedCurrency}:${wallet.deposit_address}?amount=${amount}&network=ethereum`
+    qr_payload: `${state.selectedCurrency}:${wallet.deposit_address}?amount=${amount}&service=${encodeURIComponent(service)}`
   };
   wallet.balance = (Number(wallet.balance) + Number(amount)).toFixed(2);
   addTransaction({
-    merchant: `${state.selectedCurrency} Deposit`,
+    merchant: service,
     category: "Deposit",
     amount: Number(amount).toFixed(2),
     currency: state.selectedCurrency,
@@ -274,7 +275,7 @@ async function generateDeposit() {
   document.querySelector("#deposit-network").textContent = quote.network;
   document.querySelector("#deposit-address").textContent = quote.address;
   render();
-  toast(`${state.selectedCurrency} deposit address generated.`);
+  toast(`${state.selectedCurrency} deposit confirmed via ${service}.`);
 }
 
 async function api(path, options = {}) {
@@ -452,6 +453,28 @@ function replaceCard(card) {
 
 function wallet(currency) {
   return state.dashboard.wallets.find((item) => item.currency === currency) || signedOutDashboard.wallets[0];
+}
+
+function ensureWallet(currency) {
+  const existing = state.dashboard.wallets.find((item) => item.currency === currency);
+  if (existing) return existing;
+  const seed = hashString(`${state.userId || "guest"}${currency}`);
+  const wallet = {
+    id: `${currency.toLowerCase()}-${String(seed).slice(-6)}`,
+    currency,
+    balance: "0.00",
+    change_24h: "0.00",
+    deposit_address: currency === "EUR" ? `iban-private-eu-${String(seed).slice(-6)}` : `0x${privateHex(seed, 40)}`
+  };
+  state.dashboard.wallets.push(wallet);
+  return wallet;
+}
+
+function depositNetwork(service, currency) {
+  if (currency === "EUR") return "SEPA / IBAN";
+  if (service === "Binance Pay") return "Binance Pay";
+  if (service === "Coinbase Pay") return "Coinbase Pay";
+  return currency === "USDT" ? "TRC20 / Ethereum" : "Ethereum";
 }
 
 function renderChange(selector, value) {
@@ -931,59 +954,16 @@ function saveLocalDashboardForUser() {
 
 function createInitialDashboard(user) {
   const seed = hashString(`${user.uid}${user.email || ""}`);
-  const holder = (user.name || user.email || "Private Client").replace(/@.*/, "").replace(/[._-]+/g, " ").toUpperCase();
-  const last4 = String(1000 + seed % 9000);
-  const eur = (2400 + seed % 14000 + (seed % 91) / 100).toFixed(2);
-  const usdc = (250 + seed % 4800 + (seed % 37) / 100).toFixed(2);
-  const usdt = (120 + seed % 3600 + (seed % 53) / 100).toFixed(2);
   const suffix = String(seed).slice(-6);
 
   return {
     wallets: [
-      { id: `eur-${suffix}`, currency: "EUR", balance: eur, change_24h: ((seed % 230) / 100 - 0.7).toFixed(2), deposit_address: `iban-private-eu-${suffix}` },
-      { id: `usdc-${suffix}`, currency: "USDC", balance: usdc, change_24h: ((seed % 160) / 100 - 0.4).toFixed(2), deposit_address: `0x${privateHex(seed, 40)}` },
-      { id: `usdt-${suffix}`, currency: "USDT", balance: usdt, change_24h: ((seed % 130) / 100 - 0.3).toFixed(2), deposit_address: `0x${privateHex(seed * 7, 40)}` }
+      { id: `eur-${suffix}`, currency: "EUR", balance: "0.00", change_24h: "0.00", deposit_address: `iban-private-eu-${suffix}` },
+      { id: `usdc-${suffix}`, currency: "USDC", balance: "0.00", change_24h: "0.00", deposit_address: `0x${privateHex(seed, 40)}` },
+      { id: `usdt-${suffix}`, currency: "USDT", balance: "0.00", change_24h: "0.00", deposit_address: `0x${privateHex(seed * 7, 40)}` }
     ],
-    cards: [
-      {
-        ...demoTemplate.cards[0],
-        id: `card-${user.uid}`,
-        display_name: "Private Reserve",
-        holder_name: holder,
-        last4,
-        masked_pan: `4242 42** **** ${last4}`,
-        expiry_month: 12,
-        expiry_year: 2031,
-        status: "active",
-        limits: {
-          daily: String(2500 + seed % 7500),
-          monthly: String(18000 + seed % 52000),
-          atm: String(400 + seed % 1800),
-          online: true,
-          contactless: true
-        }
-      }
-    ],
-    transactions: [
-      {
-        id: `tx-welcome-${suffix}`,
-        merchant: "Private account opened",
-        category: "Account",
-        amount: "0.00",
-        currency: "EUR",
-        status: "created",
-        occurred_at: new Date(Date.now() - 36 * 3600 * 1000).toISOString()
-      },
-      {
-        id: `tx-deposit-${suffix}`,
-        merchant: "Initial EUR funding",
-        category: "Deposit",
-        amount: (Number(eur) * 0.18).toFixed(2),
-        currency: "EUR",
-        status: "confirmed",
-        occurred_at: new Date(Date.now() - 18 * 3600 * 1000).toISOString()
-      }
-    ]
+    cards: [],
+    transactions: []
   };
 }
 
