@@ -170,18 +170,23 @@
               </label>
               <label>
                 Card number
-                <input id="new-card-number" autocomplete="cc-number" inputmode="numeric" placeholder="1234 5678 9012 3456" />
+                <input id="new-card-number" autocomplete="cc-number" inputmode="numeric" maxlength="23" placeholder="1234 5678 9012 3456" />
               </label>
               <label>
                 Network
                 <select id="new-card-network">
                   <option value="visa">Visa</option>
                   <option value="mastercard">Mastercard</option>
+                  <option value="amex">American Express</option>
                 </select>
               </label>
               <label>
                 Expiry
-                <input id="new-card-expiry" autocomplete="cc-exp" inputmode="numeric" placeholder="MM/YY" />
+                <input id="new-card-expiry" autocomplete="cc-exp" inputmode="numeric" maxlength="5" placeholder="MM/YY" />
+              </label>
+              <label>
+                CVC
+                <input id="new-card-cvc" autocomplete="cc-csc" inputmode="numeric" maxlength="4" placeholder="123" />
               </label>
               <label>
                 Daily limit
@@ -427,7 +432,7 @@
         async loadDashboard(user) {
           const ref = doc(db, "customers", user.uid);
           const snapshot = await getDoc(ref);
-          if (snapshot.exists() && snapshot.data().dashboard && snapshot.data().dashboardVersion === 3) {
+          if (snapshot.exists() && snapshot.data().dashboard && snapshot.data().dashboardVersion === 4) {
             return snapshot.data().dashboard;
           }
 
@@ -438,7 +443,7 @@
             uid: user.uid,
             email: user.email || "",
             name: user.name || "Client",
-            dashboardVersion: 3,
+            dashboardVersion: 4,
             dashboard,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp()
@@ -451,7 +456,7 @@
             uid: userId,
             email: account.email || "",
             name: account.name || "Client",
-            dashboardVersion: 3,
+            dashboardVersion: 4,
             dashboard,
             updatedAt: serverTimestamp()
           }, { merge: true });

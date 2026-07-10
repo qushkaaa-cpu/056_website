@@ -139,6 +139,7 @@ function bindActions() {
   document.querySelector("#issue-from-home").addEventListener("click", issueCard);
   document.querySelector("#issue-card").addEventListener("click", issueCard);
   document.querySelector("#card-form").addEventListener("submit", addCardFromForm);
+  bindCardInputFormatting();
   document.querySelector("#lock-card").addEventListener("click", toggleLock);
   document.querySelector("#apple-pay").addEventListener("click", () => {
     if (state.dashboard.cards.length === 0) {
@@ -191,16 +192,18 @@ async function addCardFromForm(event) {
   const cardNumber = document.querySelector("#new-card-number").value.trim();
   const network = document.querySelector("#new-card-network").value;
   const expiry = document.querySelector("#new-card-expiry").value.trim();
+  const cvc = document.querySelector("#new-card-cvc").value.trim();
   const dailyLimit = document.querySelector("#new-card-limit").value.trim();
   const normalizedNumber = cardNumber.replace(/\D/g, "");
   const parsedExpiry = parseExpiry(expiry);
+  const detectedNetwork = detectCardNetwork(normalizedNumber);
 
-  if (!displayName || !holderName || normalizedNumber.length < 12 || !parsedExpiry || Number(dailyLimit) <= 0) {
-    toast("Add card name, holder, valid number, expiry and limit.");
+  if (!displayName || !holderName || !isValidCardNumber(normalizedNumber) || !parsedExpiry || !isValidCvc(cvc, detectedNetwork) || Number(dailyLimit) <= 0) {
+    toast("Enter a valid card number, expiry, CVC and limit.");
     return;
   }
 
-  await createCard({ displayName, holderName, network, dailyLimit, normalizedNumber, expiry: parsedExpiry });
+  await createCard({ displayName, holderName, network: detectedNetwork || network, dailyLimit, normalizedNumber, expiry: parsedExpiry });
   event.target.reset();
 }
 
@@ -505,12 +508,77 @@ function focusCardForm() {
   setTimeout(() => document.querySelector("#new-card-name").focus(), 320);
 }
 
+function bindCardInputFormatting() {
+  const numberInput = document.querySelector("#new-card-number");
+  const expiryInput = document.querySelector("#new-card-expiry");
+  const cvcInput = document.querySelector("#new-card-cvc");
+  const networkSelect = document.querySelector("#new-card-network");
+
+  numberInput.addEventListener("input", () => {
+    const digits = numberInput.value.replace(/\D/g, "").slice(0, 19);
+    numberInput.value = formatCardNumber(digits);
+    const network = detectCardNetwork(digits);
+    if (network && [...networkSelect.options].some((option) => option.value === network)) {
+      networkSelect.value = network;
+    }
+  });
+
+  expiryInput.addEventListener("input", () => {
+    const digits = expiryInput.value.replace(/\D/g, "").slice(0, 4);
+    expiryInput.value = digits.length > 2 ? `${digits.slice(0, 2)}/${digits.slice(2)}` : digits;
+  });
+
+  cvcInput.addEventListener("input", () => {
+    cvcInput.value = cvcInput.value.replace(/\D/g, "").slice(0, 4);
+  });
+}
+
+function formatCardNumber(digits) {
+  const network = detectCardNetwork(digits);
+  if (network === "amex") {
+    return [digits.slice(0, 4), digits.slice(4, 10), digits.slice(10, 15)].filter(Boolean).join(" ");
+  }
+  return digits.match(/.{1,4}/g)?.join(" ") || "";
+}
+
 function maskCardNumber(value) {
   const digits = value.replace(/\D/g, "");
+  if (detectCardNetwork(digits) === "amex") {
+    return `${digits.slice(0, 4)} ${digits.slice(4, 6)}**** ***** ${digits.slice(-4)}`;
+  }
   const first = digits.slice(0, 4);
   const second = digits.slice(4, 6).padEnd(2, "*");
   const last4 = digits.slice(-4);
   return `${first} ${second}** **** ${last4}`;
+}
+
+function detectCardNetwork(digits) {
+  if (/^4\d{12,18}$/.test(digits)) return "visa";
+  if (/^(5[1-5]\d{14}|2(2[2-9]\d|[3-6]\d{2}|7[01]\d|720)\d{12})$/.test(digits)) return "mastercard";
+  if (/^3[47]\d{13}$/.test(digits)) return "amex";
+  return "";
+}
+
+function isValidCardNumber(digits) {
+  if (!/^\d{12,19}$/.test(digits)) return false;
+  if (!detectCardNetwork(digits)) return false;
+  let sum = 0;
+  let shouldDouble = false;
+  for (let index = digits.length - 1; index >= 0; index -= 1) {
+    let digit = Number(digits[index]);
+    if (shouldDouble) {
+      digit *= 2;
+      if (digit > 9) digit -= 9;
+    }
+    sum += digit;
+    shouldDouble = !shouldDouble;
+  }
+  return sum % 10 === 0;
+}
+
+function isValidCvc(value, network) {
+  const digits = value.replace(/\D/g, "");
+  return network === "amex" ? /^\d{4}$/.test(digits) : /^\d{3}$/.test(digits);
 }
 
 function parseExpiry(value) {
